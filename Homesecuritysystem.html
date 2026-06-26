@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Security System</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        #webcam-container { margin: 20px auto; }
+        #label-container div { margin: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>Teachable Machine Security System</h2>
+    <button type="button" onclick="init()">Start System</button>
+    
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+
+    <audio id="alarm" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" loop></audio>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <script>
+        const URL = "https://teachablemachine.withgoogle.com/models/i8GILgbBC/";
+        let model, webcam, labelContainer, maxPredictions;
+        let alarmSound;
+
+        // Initialize the System
+        async function init() {
+            try {
+                alarmSound = document.getElementById("alarm");
+                // Browser UX requirement: User interaction unlocks audio playback
+                alarmSound.play().then(() => {
+                    alarmSound.pause(); // Play and immediately pause to "unlock" it
+                }).catch(e => console.log("Audio unlock interaction handled."));
+
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+                console.log("Loading model...");
+                
+                model = await tmImage.load(modelURL, metadataURL);
+                console.log("Model loaded successfully!");
+                
+                maxPredictions = model.getTotalClasses();
+                const flip = true; 
+                
+                webcam = new tmImage.Webcam(200, 200, flip);
+                await webcam.setup(); 
+                await webcam.play();
+                
+                window.requestAnimationFrame(loop);
+
+                document.getElementById("webcam-container").appendChild(webcam.canvas);
+                labelContainer = document.getElementById("label-container");
+                
+                for (let i = 0; i < maxPredictions; i++) {
+                    labelContainer.appendChild(document.createElement("div"));
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Failed to load model or webcam. Check permissions.");
+            }
+        }
+
+        // Main Animation Loop
+        async function loop() {
+            webcam.update(); 
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        // Prediction Logic
+        async function predict() {
+            const prediction = await model.predict(webcam.canvas);
+            let unauthorizedDetected = false;
+            let authorizedDetected = false;
+
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+                labelContainer.childNodes[i].innerHTML = classPrediction;
+
+                if (prediction[i].className === "Unauthorized" && prediction[i].probability > 0.90) {
+                    unauthorizedDetected = true;
+                }
+                if (prediction[i].className === "Authorized" && prediction[i].probability > 0.90) {
+                    authorizedDetected = true;
+                }
+            }
+
+            // Alarm Trigger Logic
+            if (unauthorizedDetected) {
+                console.log("🚨 Unauthorized detected!");
+                if (alarmSound && alarmSound.paused) {
+                    alarmSound.play().catch(err => console.log("Audio error:", err));
+                }
+            }
+
+            if (authorizedDetected) {
+                console.log("✅ Authorized detected!");
+                if (alarmSound && !alarmSound.paused) {
+                    alarmSound.pause();
+                    alarmSound.currentTime = 0;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
